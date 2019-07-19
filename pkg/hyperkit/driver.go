@@ -169,7 +169,7 @@ func (d *Driver) Remove() error {
 		log.Debugf("Error checking machine status: %v, assuming it has been removed already", err)
 	}
 	if s == state.Running {
-		if err := d.Stop(); err != nil {
+		if err := d.Kill(); err != nil {
 			return err
 		}
 	}
