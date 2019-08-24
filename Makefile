@@ -21,4 +21,3 @@ build: $(BUILD_DIR) vendor
 			-installsuffix "static" \
 			-o $(BUILD_DIR)/crc-driver-hyperkit
 	chmod +x $(BUILD_DIR)/crc-driver-hyperkit
-	sudo mv $(BUILD_DIR)/crc-driver-hyperkit /usr/local/bin/ && sudo chown root:wheel /usr/local/bin/crc-driver-hyperkit && sudo chmod u+s /usr/local/bin/crc-driver-hyperkit
