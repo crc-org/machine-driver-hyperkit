@@ -4,6 +4,7 @@ BUILD_DIR ?= out
 ORG := github.com/machine-drivers
 REPOPATH ?= $(ORG)/docker-machine-driver-hyperkit
 
+default: build
 vendor:
 	go mod vendor
 
