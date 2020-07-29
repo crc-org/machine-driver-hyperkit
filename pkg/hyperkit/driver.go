@@ -198,11 +198,12 @@ func (d *Driver) Start() error {
 	h.CPUs = d.CPU
 	h.Memory = d.Memory
 	h.UUID = d.UUID
+	h.VSock = true
+	h.VSockGuestCID = 3
 
 	if vsockPorts, err := d.extractVSockPorts(); err != nil {
 		return err
 	} else if len(vsockPorts) >= 1 {
-		h.VSock = true
 		h.VSockPorts = vsockPorts
 	}
 
