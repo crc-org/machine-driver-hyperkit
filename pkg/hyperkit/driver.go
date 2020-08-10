@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	hyperkitdriver "github.com/code-ready/machine/drivers/hyperkit"
 	"github.com/code-ready/machine/libmachine/drivers"
 	"github.com/code-ready/machine/libmachine/log"
 	"github.com/code-ready/machine/libmachine/mcnflag"
@@ -48,30 +49,19 @@ const (
 		"sudo chown root:wheel %s && sudo chmod u+s %s"
 )
 
-// Driver is the machine driver for Hyperkit
-type Driver struct {
-	*drivers.BaseDriver
-	DiskPathURL    string
-	CPU            int
-	Memory         int
-	Cmdline        string // kernel commandline
-	UUID           string
-	VpnKitSock     string
-	VSockPorts     []string
-	VmlinuzPath    string
-	InitrdPath     string
-	SSHKeyPath     string
-	HyperKitPath   string
-}
+type Driver hyperkitdriver.Driver
 
 // NewDriver creates a new driver for a host
 func NewDriver() *Driver {
 	return &Driver{
-		BaseDriver: &drivers.BaseDriver{
-			SSHUser: DefaultSSHUser,
+		VMDriver: &drivers.VMDriver{
+
+			BaseDriver: &drivers.BaseDriver{
+				SSHUser: DefaultSSHUser,
+			},
+			CPU:    DefaultCPUs,
+			Memory: DefaultMemory,
 		},
-		CPU:    DefaultCPUs,
-		Memory: DefaultMemory,
 	}
 }
 
