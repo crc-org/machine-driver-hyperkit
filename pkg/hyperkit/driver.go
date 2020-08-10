@@ -84,14 +84,17 @@ func (d *Driver) verifyRootPermissions() error {
 	return nil
 }
 
+func (d *Driver) getDiskPath() string {
+	return d.ResolveStorePath(diskName)
+}
+
 // Create a host using the driver's config
 func (d *Driver) Create() error {
 	if err := d.verifyRootPermissions(); err != nil {
 		return err
 	}
 
-	b2dutils := mcnutils.NewB2dUtils(d.StorePath, "")
-	if err := b2dutils.CopyDiskToMachineDir(d.DiskPathURL, d.MachineName); err != nil {
+	if err := mcnutils.CopyFile(d.ImageSourcePath, d.getDiskPath()); err != nil {
 		return err
 	}
 
@@ -216,9 +219,10 @@ func (d *Driver) Start() error {
 	// Need to strip 0's
 	mac = trimMacAddress(mac)
 	log.Debugf("Generated MAC %s", mac)
+
 	h.Disks = []hyperkit.DiskConfig{
 		{
-			Path:   fmt.Sprintf("file://%s", d.ResolveStorePath(diskName)),
+			Path:   fmt.Sprintf("file://%s", d.getDiskPath()),
 			Driver: "virtio-blk",
 			Format: "qcow",
 		},
