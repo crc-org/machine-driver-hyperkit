@@ -409,3 +409,14 @@ func (d *Driver) getPid() int {
 
 	return config.Pid
 }
+func (d *Driver) UpdateConfigRaw(rawConfig []byte) error {
+	var newDriver Driver
+	err := json.Unmarshal(rawConfig, &newDriver)
+	if err != nil {
+		return err
+	}
+
+	*d = newDriver
+
+	return nil
+}

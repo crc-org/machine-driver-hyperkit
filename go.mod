@@ -3,7 +3,7 @@ module github.com/code-ready/machine-driver-hyperkit
 go 1.13
 
 require (
-	github.com/code-ready/machine v0.0.0-20200914130222-4c6e6576e87a
+	github.com/code-ready/machine v0.0.0-20200917080012-b562dd1312da
 	github.com/mitchellh/go-ps v0.0.0-20170309133038-4fdf99ab2936
 	github.com/moby/hyperkit v0.0.0-20171204115932-858492e3d919
 	github.com/pkg/errors v0.8.1
