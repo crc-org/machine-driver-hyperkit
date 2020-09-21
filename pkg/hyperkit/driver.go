@@ -183,7 +183,7 @@ func (d *Driver) Start() error {
 		return err
 	}
 
-	stateDir := filepath.Join(d.StorePath, "machines", d.MachineName)
+	stateDir := d.ResolveStorePath("")
 	if err := d.recoverFromUncleanShutdown(); err != nil {
 		return err
 	}
@@ -292,8 +292,7 @@ func (d *Driver) GetSSHKeyPath() string {
 //an instance running already. If the PID in the pidfile does not belong to a running hyperkit
 //process, we can safely delete it, and there is a good chance the machine will recover when restarted.
 func (d *Driver) recoverFromUncleanShutdown() error {
-	stateDir := filepath.Join(d.StorePath, "machines", d.MachineName)
-	pidFile := filepath.Join(stateDir, pidFileName)
+	pidFile := d.ResolveStorePath(pidFileName)
 
 	if _, err := os.Stat(pidFile); err != nil {
 		if os.IsNotExist(err) {
