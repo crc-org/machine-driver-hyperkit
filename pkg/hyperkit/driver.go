@@ -41,7 +41,6 @@ import (
 )
 
 const (
-	diskName        = "crc.disk"
 	pidFileName     = "hyperkit.pid"
 	machineFileName = "hyperkit.json"
 	permErr         = "%s needs to run with elevated permissions. " +
@@ -85,7 +84,7 @@ func (d *Driver) verifyRootPermissions() error {
 }
 
 func (d *Driver) getDiskPath() string {
-	return d.ResolveStorePath(diskName)
+	return d.ResolveStorePath(fmt.Sprintf("%s.%s", d.MachineName, d.ImageFormat))
 }
 
 // Create a host using the driver's config
@@ -220,6 +219,9 @@ func (d *Driver) Start() error {
 	mac = trimMacAddress(mac)
 	log.Debugf("Generated MAC %s", mac)
 
+	if d.ImageFormat != "qcow2" {
+		return fmt.Errorf("Unsupported VM image format: %s", d.ImageFormat)
+	}
 	h.Disks = []hyperkit.DiskConfig{
 		{
 			Path:   fmt.Sprintf("file://%s", d.getDiskPath()),
