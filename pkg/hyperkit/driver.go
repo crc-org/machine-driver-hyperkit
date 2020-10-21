@@ -416,6 +416,13 @@ func (d *Driver) UpdateConfigRaw(rawConfig []byte) error {
 		return err
 	}
 
+	if newDriver.Memory == d.Memory && newDriver.CPU == d.CPU {
+		/* For now only changing memory and CPU is supported/tested.
+		 * If none of these changed, we might be trying to change another
+		 * value, which is may or may not work, return ErrNotImplemented for now
+		 */
+		return drivers.ErrNotImplemented
+	}
 	*d = newDriver
 
 	return nil
