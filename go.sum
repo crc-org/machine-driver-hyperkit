@@ -1,7 +1,7 @@
 github.com/bugsnag/bugsnag-go v1.5.1/go.mod h1:2oa8nejYd4cQ/b0hMIopN0lCRxU0bueqREvZLWFrtK8=
 github.com/bugsnag/panicwrap v1.2.0/go.mod h1:D/8v3kj0zr8ZAKg1AQ6crr+5VwKN5eIywRkfhyM/+dE=
-github.com/code-ready/machine v0.0.0-20200917080012-b562dd1312da h1:sWsWZUiTP45ukBcukit91Tda58iRiRYTXHjqnKzsAB4=
-github.com/code-ready/machine v0.0.0-20200917080012-b562dd1312da/go.mod h1:g30jKsf0FV9yJjsqZFAuFzVxwJE2h5cqDXSuMUV1G/U=
+github.com/code-ready/machine v0.0.0-20201022100236-4405fef4d0cc h1:9Tp3sGd10JVbS2OhRmsxtsRytRbZoS6akW7DR8hk6Jw=
+github.com/code-ready/machine v0.0.0-20201022100236-4405fef4d0cc/go.mod h1:g30jKsf0FV9yJjsqZFAuFzVxwJE2h5cqDXSuMUV1G/U=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gofrs/uuid v3.2.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
