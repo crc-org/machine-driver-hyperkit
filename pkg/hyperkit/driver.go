@@ -32,7 +32,6 @@ import (
 	hyperkitdriver "github.com/code-ready/machine/drivers/hyperkit"
 	"github.com/code-ready/machine/libmachine/drivers"
 	"github.com/code-ready/machine/libmachine/log"
-	"github.com/code-ready/machine/libmachine/mcnflag"
 	"github.com/code-ready/machine/libmachine/mcnutils"
 	"github.com/code-ready/machine/libmachine/state"
 	ps "github.com/mitchellh/go-ps"
@@ -54,10 +53,7 @@ type Driver hyperkitdriver.Driver
 func NewDriver() *Driver {
 	return &Driver{
 		VMDriver: &drivers.VMDriver{
-
-			BaseDriver: &drivers.BaseDriver{
-				SSHUser: DefaultSSHUser,
-			},
+			BaseDriver: &drivers.BaseDriver{},
 			CPU:    DefaultCPUs,
 			Memory: DefaultMemory,
 		},
@@ -272,16 +268,6 @@ func (d *Driver) Start() error {
 	return nil
 }
 
-// GetCreateFlags is not implemented yet
-func (d *Driver) GetCreateFlags() []mcnflag.Flag {
-	return nil
-}
-
-// SetConfigFromFlags is not implemented yet
-func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
-	return nil
-}
-
 // GetURL is not implemented yet
 func (d *Driver) GetURL() (string, error) {
 	return "", nil
@@ -289,10 +275,6 @@ func (d *Driver) GetURL() (string, error) {
 
 func (d *Driver) DriverVersion() string {
 	return DriverVersion
-}
-
-func (d *Driver) GetSSHKeyPath() string {
-	return d.SSHKeyPath
 }
 
 //recoverFromUncleanShutdown searches for an existing hyperkit.pid file in
