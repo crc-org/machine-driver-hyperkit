@@ -30,3 +30,8 @@ build: $(BUILD_DIR) vendor
 .PHONY: lint
 lint:
 	golangci-lint run
+
+.PHONY: test
+test:
+	go test ./...
+
