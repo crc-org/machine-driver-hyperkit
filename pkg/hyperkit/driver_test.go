@@ -50,7 +50,7 @@ func Test_portExtraction(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		d := NewDriver("", "")
+		d := NewDriver()
 		d.VSockPorts = tt.ports
 		got, gotErr := d.extractVSockPorts()
 		if !testEq(got, tt.want) {
