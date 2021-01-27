@@ -31,11 +31,11 @@ import (
 
 	hyperkitdriver "github.com/code-ready/machine/drivers/hyperkit"
 	"github.com/code-ready/machine/libmachine/drivers"
-	"github.com/code-ready/machine/libmachine/log"
 	"github.com/code-ready/machine/libmachine/state"
-	ps "github.com/mitchellh/go-ps"
+	"github.com/mitchellh/go-ps"
 	hyperkit "github.com/moby/hyperkit/go"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 const (

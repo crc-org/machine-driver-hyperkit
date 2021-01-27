@@ -28,7 +28,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/code-ready/machine/libmachine/log"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
