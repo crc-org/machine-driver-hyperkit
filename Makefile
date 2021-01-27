@@ -20,7 +20,7 @@ clean:
 	rm -rf vendor
 
 .PHONY: build
-build: $(BUILD_DIR) vendor
+build: $(BUILD_DIR) vendor lint test
 	GOOS=darwin go build \
 			-installsuffix "static" \
 			-ldflags="-s -w" \
