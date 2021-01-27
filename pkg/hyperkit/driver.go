@@ -276,13 +276,13 @@ func (d *Driver) DriverVersion() string {
 	return DriverVersion
 }
 
-//recoverFromUncleanShutdown searches for an existing hyperkit.pid file in
-//the machine directory. If it can't find it, a clean shutdown is assumed.
-//If it finds the pid file, it checks for a running hyperkit process with that pid
-//as the existence of a file might not indicate an unclean shutdown but an actual running
-//hyperkit server. This is an error situation - we shouldn't start minikube as there is likely
-//an instance running already. If the PID in the pidfile does not belong to a running hyperkit
-//process, we can safely delete it, and there is a good chance the machine will recover when restarted.
+// recoverFromUncleanShutdown searches for an existing hyperkit.pid file in
+// the machine directory. If it can't find it, a clean shutdown is assumed.
+// If it finds the pid file, it checks for a running hyperkit process with that pid
+// as the existence of a file might not indicate an unclean shutdown but an actual running
+// hyperkit server. This is an error situation - we shouldn't start minikube as there is likely
+// an instance running already. If the PID in the pidfile does not belong to a running hyperkit
+// process, we can safely delete it, and there is a good chance the machine will recover when restarted.
 func (d *Driver) recoverFromUncleanShutdown() error {
 	pidFile := d.ResolveStorePath(pidFileName)
 
@@ -335,7 +335,7 @@ func (d *Driver) Stop() error {
 	if s != state.Stopped {
 		err := d.sendSignal(syscall.SIGTERM)
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("hyperkit sigterm failed"))
+			return errors.Wrap(err, "hyperkit sigterm failed")
 		}
 		// wait 120s for graceful shutdown
 		for i := 0; i < 60; i++ {

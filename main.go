@@ -17,9 +17,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/code-ready/machine-driver-hyperkit/pkg/hyperkit"
 	"github.com/code-ready/machine/libmachine/drivers/plugin"
-	"os"
 )
 
 func main() {
