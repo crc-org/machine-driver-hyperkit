@@ -5,6 +5,8 @@ ORG := github.com/machine-drivers
 REPOPATH ?= $(ORG)/docker-machine-driver-hyperkit
 
 default: build
+
+.PHONY: vendor
 vendor:
 	go mod vendor
 
