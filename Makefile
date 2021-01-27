@@ -8,6 +8,7 @@ default: build
 
 .PHONY: vendor
 vendor:
+	go mod tidy
 	go mod vendor
 
 $(BUILD_DIR):
