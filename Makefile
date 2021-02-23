@@ -35,3 +35,6 @@ lint:
 test:
 	go test ./...
 
+.PHONY: vendorcheck
+vendorcheck:
+	./verify-vendor.sh
