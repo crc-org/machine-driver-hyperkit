@@ -11,7 +11,7 @@ github.com/magefile/mage/mg
 github.com/magefile/mage/sh
 # github.com/mitchellh/go-ps v1.0.0
 github.com/mitchellh/go-ps
-# github.com/moby/hyperkit v0.0.0-20171204115932-858492e3d919
+# github.com/moby/hyperkit v0.0.0-20210108224842-2f061e447e14
 github.com/moby/hyperkit/go
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
