@@ -39,9 +39,8 @@ import (
 )
 
 const (
-	pidFileName     = "hyperkit.pid"
-	machineFileName = "hyperkit.json"
-	permErr         = "%s needs to run with elevated permissions. " +
+	pidFileName = "hyperkit.pid"
+	permErr     = "%s needs to run with elevated permissions. " +
 		"Please run the following command, then try again: " +
 		"sudo chown root:wheel %s && sudo chmod u+s %s"
 )
@@ -345,8 +344,11 @@ func (d *Driver) extractVSockPorts() ([]int, error) {
 }
 
 func (d *Driver) sendSignal(s os.Signal) error {
-	pid := d.getPid()
-	proc, err := os.FindProcess(pid)
+	psProc, err := d.findHyperkitProcess()
+	if err != nil {
+		return err
+	}
+	proc, err := os.FindProcess(psProc.Pid())
 	if err != nil {
 		return err
 	}
@@ -408,23 +410,6 @@ func (d *Driver) findHyperkitProcess() (ps.Process, error) {
 	return p, nil
 }
 
-func (d *Driver) getPid() int {
-	pidPath := d.ResolveStorePath(machineFileName)
-
-	f, err := os.Open(pidPath)
-	if err != nil {
-		log.Warnf("Error reading pid file: %v", err)
-		return 0
-	}
-	dec := json.NewDecoder(f)
-	config := hyperkit.HyperKit{}
-	if err := dec.Decode(&config); err != nil {
-		log.Warnf("Error decoding pid file: %v", err)
-		return 0
-	}
-
-	return config.Pid
-}
 func (d *Driver) UpdateConfigRaw(rawConfig []byte) error {
 	var newDriver Driver
 	err := json.Unmarshal(rawConfig, &newDriver)
