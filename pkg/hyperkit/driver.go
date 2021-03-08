@@ -108,36 +108,20 @@ func (d *Driver) GetSSHHostname() (string, error) {
 	return d.IPAddress, nil
 }
 
-// Return the state of the hyperkit pid
-func pidState(pid int) (state.State, error) {
-	if pid == 0 {
-		return state.Stopped, nil
-	}
-	p, err := ps.FindProcess(pid)
-	if err != nil {
-		return state.Error, err
-	}
-	if p == nil {
-		log.Debugf("hyperkit pid %d missing from process table", pid)
-		return state.Stopped, nil
-	}
-	// hyperkit or com.docker.hyper
-	if !strings.Contains(p.Executable(), "hyper") {
-		log.Debugf("pid %d is stale, and is being used by %s", pid, p.Executable())
-		return state.Stopped, nil
-	}
-	return state.Running, nil
-}
-
 // GetState returns the state that the host is in (running, stopped, etc)
 func (d *Driver) GetState() (state.State, error) {
 	if err := d.verifyRootPermissions(); err != nil {
 		return state.Error, err
 	}
 
-	pid := d.getPid()
-	log.Debugf("hyperkit pid from json: %d", pid)
-	return pidState(pid)
+	p, err := d.findHyperkitProcess()
+	if err != nil {
+		return state.Error, err
+	}
+	if p == nil {
+		return state.Stopped, nil
+	}
+	return state.Running, nil
 }
 
 // Kill stops a host forcefully
