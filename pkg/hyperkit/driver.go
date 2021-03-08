@@ -290,39 +290,19 @@ func (d *Driver) DriverVersion() string {
 // an instance running already. If the PID in the pidfile does not belong to a running hyperkit
 // process, we can safely delete it, and there is a good chance the machine will recover when restarted.
 func (d *Driver) recoverFromUncleanShutdown() error {
-	pidFile := d.ResolveStorePath(pidFileName)
-
-	if _, err := os.Stat(pidFile); err != nil {
-		if os.IsNotExist(err) {
-			log.Debugf("clean start, hyperkit pid file doesn't exist: %s", pidFile)
-			return nil
-		}
-		return errors.Wrap(err, "stat")
-	}
-
-	log.Warnf("crc might have been shutdown in an unclean way, the hyperkit pid file still exists: %s", pidFile)
-	bs, err := ioutil.ReadFile(pidFile)
-	if err != nil {
-		return errors.Wrapf(err, "reading pidfile %s", pidFile)
-	}
-	content := strings.TrimSpace(string(bs))
-	pid, err := strconv.Atoi(content)
-	if err != nil {
-		return errors.Wrapf(err, "parsing pidfile %s", pidFile)
-	}
-
-	st, err := pidState(pid)
-	if err != nil {
-		return errors.Wrap(err, "pidState")
-	}
-
-	log.Debugf("pid %d is in state %q", pid, st)
-	if st == state.Running {
+	proc, err := d.findHyperkitProcess()
+	if err == nil && proc != nil {
+		/* hyperkit is running, pid file can't be stale */
 		return nil
 	}
-	log.Debugf("Removing stale pid file %s...", pidFile)
+	/* There might be a stale pid file, try to remove it */
+	pidFile := d.ResolveStorePath(pidFileName)
 	if err := os.Remove(pidFile); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("removing pidFile %s", pidFile))
+		if !errors.Is(err, os.ErrNotExist) {
+			return errors.Wrap(err, fmt.Sprintf("removing pidFile %s", pidFile))
+		}
+	} else {
+		log.Debugf("Removed stale pid file %s...", pidFile)
 	}
 	return nil
 }
@@ -388,6 +368,60 @@ func (d *Driver) sendSignal(s os.Signal) error {
 	}
 
 	return proc.Signal(s)
+}
+
+func readPidFromFile(filename string) (int, error) {
+	bs, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return 0, err
+	}
+	content := strings.TrimSpace(string(bs))
+	pid, err := strconv.Atoi(content)
+	if err != nil {
+		return 0, errors.Wrapf(err, "parsing %s", filename)
+	}
+
+	return pid, nil
+}
+
+/*
+ * Returns a ps.Process instance if it could find a hyperkit process with the pid
+ * stored in $pidFileName
+ *
+ * Returns nil, nil if:
+ * - if the $pidFileName file does not exist,
+ * - if a process with the pid from this file cannot be found,
+ * - if a process was found, but its name does not contain 'hyper'
+ */
+func (d *Driver) findHyperkitProcess() (ps.Process, error) {
+	pidFile := d.ResolveStorePath(pidFileName)
+
+	pid, err := readPidFromFile(pidFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, errors.Wrapf(err, "error reading pidfile %s", pidFile)
+	}
+
+	p, err := ps.FindProcess(pid)
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("cannot find pid %d", pid))
+	}
+	if p == nil {
+		log.Debugf("hyperkit pid %d missing from process table", pid)
+		// return PidNotExist error?
+		return nil, nil
+	}
+
+	// match both hyperkit and com.docker.hyper
+	if !strings.Contains(p.Executable(), "hyper") {
+		// return InvalidExecutable error?
+		log.Debugf("pid %d is stale, and is being used by %s", pid, p.Executable())
+		return nil, nil
+	}
+
+	return p, nil
 }
 
 func (d *Driver) getPid() int {
