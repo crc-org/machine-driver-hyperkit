@@ -239,19 +239,25 @@ func (d *Driver) Start() error {
 
 	log.Debugf("Trying to execute %s", h.CmdLine)
 
+	waitUntilRunning := func() error {
+		st, err := d.GetState()
+		if err != nil {
+			return err
+		}
+		if st == state.Running {
+			return nil
+		}
+		return &RetriableError{fmt.Errorf("hyperkit not running yet")}
+	}
+	if err := RetryAfter(5, waitUntilRunning, time.Second); err != nil {
+		return fmt.Errorf("VM failed to start: %v", err)
+	}
+
 	if !d.VMNet {
 		return nil
 	}
 
 	getIP := func() error {
-		st, err := d.GetState()
-		if err != nil {
-			return errors.Wrap(err, "get state")
-		}
-		if st == state.Error || st == state.Stopped {
-			return fmt.Errorf("hyperkit crashed! command line:\n  hyperkit %s", d.Cmdline)
-		}
-
 		d.IPAddress, err = GetIPAddressByMACAddress(mac)
 		if err != nil {
 			return &RetriableError{Err: err}
