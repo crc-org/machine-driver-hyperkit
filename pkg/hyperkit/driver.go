@@ -58,6 +58,10 @@ func (qcow *QcowDisk) Ensure() error {
 	return nil
 }
 
+func (qcow *QcowDisk) AsArgument() string {
+	return fmt.Sprintf("virtio-blk,file://%s,format=qcow", qcow.Path)
+}
+
 // NewDriver creates a new driver for a host
 func NewDriver() *Driver {
 	return &Driver{
