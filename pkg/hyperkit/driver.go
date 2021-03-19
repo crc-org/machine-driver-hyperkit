@@ -105,7 +105,7 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	return d.Start()
+	return nil
 }
 
 // DriverName returns the name of the driver
