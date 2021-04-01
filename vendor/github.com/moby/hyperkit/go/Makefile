@@ -30,7 +30,6 @@ build/hyperkitgo.exe: $(DEPS)
 	go build -o $@ --ldflags '-extldflags "-fno-PIC"' \
 		sample/main.go
 
-.PHONY: clean fmt lint test
 clean:
 	rm -rf build
 
@@ -43,14 +42,6 @@ lint:
 	$(if $(shell which golint || echo ''), , \
 		$(error Please install golint))
 	@test -z "$$(golint ./... 2>&1 | grep -v ^vendor/ | grep -v mock/ | tee /dev/stderr)"
-
-test:
-	@echo "+ $@"
-# We pass the module path (not just `.`) because in the CI we play
-# tricks with symlinks that confuse go test: when we enter `go/`, we
-# are no longer in the go tree, but back in ~/distiller/hyperkit/go
-# where Circle CI forces our checkout.
-	@go test -v $(TESTFLAGS) github.com/moby/hyperkit/go
 
 # this will blow away the vendored code and update it to latest
 .PHONY: vendor vendor-local
@@ -69,8 +60,8 @@ vendor-local:
 
 .PHONY: ci setup
 setup:
-	go get golang.org/x/lint/golint
+	go get github.com/golang/lint/golint
 
-ci: setup build/hyperkitgo build/hyperkitgo_linux build/hyperkitgo.exe test
+ci: setup build/hyperkitgo build/hyperkitgo_linux build/hyperkitgo.exe
 	test -z "$$(gofmt -s -l . 2>&1 | grep -v ^vendor/ | tee /dev/stderr)"
 	test -z "$$(golint ./... 2>&1 | grep -v ^vendor/ | grep -v mock/ | tee /dev/stderr)"

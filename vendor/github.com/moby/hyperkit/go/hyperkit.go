@@ -28,6 +28,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -41,15 +42,12 @@ import (
 )
 
 const (
-	// ConsoleStdio configures console to use Stdio (deprecated)
+	// ConsoleStdio configures console to use Stdio
 	ConsoleStdio = iota
-	// ConsoleFile configures console to a tty and output to a file (deprecated)
+	// ConsoleFile configures console to a tty and output to a file
 	ConsoleFile
-	// ConsoleLog configures console to a tty and sends its contents to the logs (deprecated)
-	ConsoleLog
 
-	legacyVPNKitSock  = "Library/Containers/com.docker.docker/Data/s50"
-	defaultVPNKitSock = "Library/Containers/com.docker.docker/Data/vpnkit.eth.sock"
+	defaultVPNKitSock = "Library/Containers/com.docker.docker/Data/s50"
 
 	defaultCPUs   = 1
 	defaultMemory = 1024 // 1G
@@ -72,6 +70,21 @@ type Socket9P struct {
 	Tag  string `json:"tag"`
 }
 
+// DiskConfig contains the path to a disk image and an optional size if the image needs to be created.
+type DiskConfig struct {
+	Path   string `json:"path"`
+	Size   int    `json:"size"`
+	Format string `json:"format"`
+	Driver string `json:"driver"`
+}
+
+// Logger is an interface for logging.
+type Logger interface {
+	Fatalf(format string, v ...interface{})
+	Panicf(format string, v ...interface{})
+	Printf(format string, v ...interface{})
+}
+
 // HyperKit contains the configuration of the hyperkit VM
 type HyperKit struct {
 	// HyperKit is the path to the hyperkit binary.
@@ -90,14 +103,12 @@ type HyperKit struct {
 	// UUID is a string containing a UUID, it sets BIOS DMI UUID for the VM (as found in /sys/class/dmi/id/product_uuid on Linux).
 	UUID string `json:"uuid"`
 	// Disks contains disk images to use/create.
-	Disks []Disk `json:"disks"`
+	Disks []DiskConfig `json:"disks"`
 	// ISOImage is the (optional) path to a ISO image to attach.
 	ISOImages []string `json:"iso"`
 
 	// VSock enables the virtio-socket device and exposes it on the host.
 	VSock bool `json:"vsock"`
-	// VSockDir specifies where the unix domain sockets will be created. Defaults to StateDir when empty.
-	VSockDir string `json:"vsock_dir"`
 	// VSockPorts is a list of guest VSock ports that should be exposed as sockets on the host.
 	VSockPorts []int `json:"vsock_ports"`
 	// VSock guest CID
@@ -121,12 +132,19 @@ type HyperKit struct {
 	// Memory is the amount of megabytes of memory for the VM.
 	Memory int `json:"memory"`
 
-	// Console defines where the console of the VM should be connected to. (deprecated)
+	// Console defines where the console of the VM should be
+	// connected to. ConsoleStdio and ConsoleFile are supported.
 	Console int `json:"console"`
 
-	// Serials defines what happens to the I/O on the serial ports. If this is not nil
-	// it overrides the Console setting.
-	Serials []Serial `json:"serials"`
+	// ExtraFiles is exactly exec.Cmd.ExtraFiles.  It specifies
+	// additional open files to be inherited by the hyperkit
+	// process. It does not include standard input, standard
+	// output, or standard error. If non-nil, entry i becomes file
+	// descriptor 3+i.
+	//
+	// It can be used to keep some files alive even if the parent
+	// process died unexpectedly.
+	ExtraFiles []*os.File `json:"extra_files"`
 
 	// Below here are internal members, but they are exported so
 	// that they are written to the state json file, if configured.
@@ -138,30 +156,12 @@ type HyperKit struct {
 	// CmdLine is a single string of the command line
 	CmdLine string `json:"cmdline"`
 
-	process *os.Process
+	process    *os.Process
+	background bool
+
+	// log receives stdout/stderr of the hyperkit process itself, if set.
+	log Logger
 }
-
-// Serial port.
-type Serial struct {
-	// InteractiveConsole allows a user to connect to a live VM serial console.
-	InteractiveConsole InteractiveConsole
-	// LogToRingBuffer will write console output to a fixed size ring buffer file.
-	LogToRingBuffer bool
-	// LogToASL will write console output to the Apple System Log.
-	LogToASL bool
-}
-
-// InteractiveConsole is an optional interactive VM console.
-type InteractiveConsole int
-
-const (
-	// NoInteractiveConsole disables the interactive console.
-	NoInteractiveConsole = InteractiveConsole(iota)
-	// StdioInteractiveConsole creates a console on stdio.
-	StdioInteractiveConsole
-	// TTYInteractiveConsole creates a console on a TTY.
-	TTYInteractiveConsole
-)
 
 // New creates a template config structure.
 // - If hyperkit can't be found an error is returned.
@@ -192,115 +192,83 @@ func New(hyperkit, vpnkitsock, statedir string) (*HyperKit, error) {
 	return &h, nil
 }
 
-// Run the VM with a given command line until it exits.
+// FromState reads a json file from statedir and populates a HyperKit structure.
+func FromState(statedir string) (*HyperKit, error) {
+	b, err := ioutil.ReadFile(filepath.Join(statedir, jsonFile))
+	if err != nil {
+		return nil, fmt.Errorf("Can't read json file: %s", err)
+	}
+	h := &HyperKit{}
+	err = json.Unmarshal(b, h)
+	if err != nil {
+		return nil, fmt.Errorf("Can't parse json file: %s", err)
+	}
+
+	// Make sure the pid written by hyperkit is the same as in the json
+	d, err := ioutil.ReadFile(filepath.Join(statedir, pidFile))
+	if err != nil {
+		return nil, err
+	}
+	pid, err := strconv.Atoi(string(d[:]))
+	if err != nil {
+		return nil, err
+	}
+	if h.Pid != pid {
+		return nil, fmt.Errorf("pids do not match %d != %d", h.Pid, pid)
+	}
+
+	h.process, err = os.FindProcess(h.Pid)
+	if err != nil {
+		return nil, err
+	}
+
+	return h, nil
+}
+
+// SetLogger sets the log instance to use for the output of the hyperkit process itself (not the console of the VM).
+// This is only relevant when Console is set to ConsoleFile
+func (h *HyperKit) SetLogger(logger Logger) {
+	h.log = logger
+}
+
+// Run the VM with a given command line until it exits
 func (h *HyperKit) Run(cmdline string) error {
-	errCh, err := h.Start(cmdline)
-	if err != nil {
-		return err
-	}
-	return <-errCh
+	h.background = false
+	return h.execute(cmdline)
 }
 
-// Start the VM with a given command line in the background.  On
-// success, returns a channel on which the result of Wait'ing for
-// hyperkit is sent.  Return failures to start the process.
-func (h *HyperKit) Start(cmdline string) (chan error, error) {
-	log.Debugf("hyperkit: Start %#v", h)
-	if err := h.check(); err != nil {
-		return nil, err
-	}
-	h.buildArgs(cmdline)
-	cmd, err := h.execute()
-	if err != nil {
-		return nil, err
-	}
-	errCh := make(chan error, 1)
-	// Make sure we reap the child when it exits
-	go func() {
-		log.Debugf("hyperkit: Waiting for %#v", cmd)
-		errCh <- cmd.Wait()
-	}()
-	return errCh, nil
+// Start the VM with a given command line in the background
+func (h *HyperKit) Start(cmdline string) error {
+	h.background = true
+	return h.execute(cmdline)
 }
 
-func (h *HyperKit) checkLegacyConsole() error {
-	switch h.Console {
-	case ConsoleFile, ConsoleLog:
-		if h.StateDir == "" {
-			return fmt.Errorf("If ConsoleFile or ConsoleLog is set, StateDir must be specified")
-		}
-	case ConsoleStdio:
-		if !isTerminal(os.Stdout) && h.StateDir == "" {
-			return fmt.Errorf("If ConsoleStdio is set but stdio is not a terminal, StateDir must be specified")
-		}
-	}
-	return nil
-}
-
-func (h *HyperKit) checkSerials() error {
-	stdioConsole := -1
-	for i, serial := range h.Serials {
-		if serial.LogToRingBuffer && h.StateDir == "" {
-			return fmt.Errorf("If VM is to log to a ring buffer, StateDir must be specified")
-		}
-		if serial.InteractiveConsole == StdioInteractiveConsole {
-			if isTerminal(os.Stdout) {
-				return fmt.Errorf("If StdioInteractiveConsole is set, stdio must be a TTY")
-			}
-			if stdioConsole != -1 {
-				return fmt.Errorf("Only one serial port can be nominated as the stdio interactive console")
-			}
-			stdioConsole = i
-		}
-		if serial.InteractiveConsole == TTYInteractiveConsole && h.StateDir == "" {
-			return fmt.Errorf("If TTYInteractiveConsole is set, StateDir must be specified ")
-		}
-		if serial.LogToRingBuffer && h.StateDir == "" {
-			return fmt.Errorf("If LogToRingBuffer is set, StateDir must be specified")
-		}
-	}
-	return nil
-}
-
-// check validates `h`.  It also creates the disks if needed.
-func (h *HyperKit) check() error {
-	log.Debugf("hyperkit: check %#v", h)
+func (h *HyperKit) execute(cmdline string) error {
 	var err error
 	// Sanity checks on configuration
-	if h.Serials == nil {
-		if err := h.checkLegacyConsole(); err != nil {
-			return err
-		}
-	} else {
-		if err := h.checkSerials(); err != nil {
-			return err
-		}
+	if h.Console == ConsoleFile && h.StateDir == "" {
+		return fmt.Errorf("If ConsoleFile is set, StateDir must be specified")
+	}
+	if h.Console == ConsoleStdio && !isTerminal(os.Stdout) && h.StateDir == "" {
+		return fmt.Errorf("If ConsoleStdio is set but stdio is not a terminal, StateDir must be specified")
 	}
 	for _, image := range h.ISOImages {
 		if _, err = os.Stat(image); os.IsNotExist(err) {
 			return fmt.Errorf("ISO %s does not exist", image)
 		}
 	}
-
-	if h.VSock {
-		if h.VSockDir == "" {
-			if h.StateDir == "" {
-				return fmt.Errorf("If virtio-sockets are enabled, VSockDir or StateDir must be specified")
-			}
-			h.VSockDir = h.StateDir
-		}
-	} else if len(h.VSockPorts) > 0 {
-		return fmt.Errorf("To forward vsock ports VSock must be enabled")
+	if h.VSock && h.StateDir == "" {
+		return fmt.Errorf("If virtio-sockets are enabled, StateDir must be specified")
 	}
-
+	if !h.VSock && len(h.VSockPorts) > 0 {
+		return fmt.Errorf("To forward vsock ports vsock must be enabled")
+	}
 	if h.Bootrom == "" {
 		if _, err = os.Stat(h.Kernel); os.IsNotExist(err) {
 			return fmt.Errorf("Kernel %s does not exist", h.Kernel)
 		}
-		if h.Initrd != "" {
-			if _, err = os.Stat(h.Initrd); os.IsNotExist(err) {
-				return fmt.Errorf("initrd %s does not exist", h.Initrd)
-			}
+		if _, err = os.Stat(h.Initrd); os.IsNotExist(err) {
+			return fmt.Errorf("initrd %s does not exist", h.Initrd)
 		}
 	} else {
 		if _, err = os.Stat(h.Bootrom); os.IsNotExist(err) {
@@ -313,30 +281,52 @@ func (h *HyperKit) check() error {
 		}
 	}
 
-	// Create directories.
-	for _, dir := range []string{h.VSockDir, h.StateDir} {
-		if dir != "" {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return fmt.Errorf("Cannot create directory %q: %v", dir, err)
+	// Create files
+	if h.StateDir != "" {
+		err = os.MkdirAll(h.StateDir, 0755)
+		if err != nil {
+			return err
+		}
+	}
+
+	for idx, config := range h.Disks {
+		if config.Path == "" {
+			if h.StateDir == "" {
+				return fmt.Errorf("Unable to create disk image when neither path nor state dir is set")
+			}
+			if config.Size <= 0 {
+				return fmt.Errorf("Unable to create disk image when size is 0 or not set")
+			}
+			config.Path = filepath.Clean(filepath.Join(h.StateDir, fmt.Sprintf("disk%02d.img", idx)))
+			h.Disks[idx] = config
+		}
+
+		// assume the path could be a file:// uri with query params
+		// use the actual path from the parsed result
+		u, err := url.Parse(config.Path)
+		if err != nil {
+			return err
+		}
+
+		if _, err = os.Stat(u.Path); os.IsNotExist(err) {
+			if config.Size != 0 {
+				err = CreateDiskImage(u.Path, config.Size)
+				if err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf("Disk image %s not found and unable to create it as size is not specified", config.Path)
 			}
 		}
 	}
 
-	for idx, disk := range h.Disks {
-		if disk.GetPath() == "" {
-			if h.StateDir == "" {
-				return fmt.Errorf("Unable to create disk image when neither path nor state dir is set")
-			}
-			if disk.GetSize() <= 0 {
-				return fmt.Errorf("Unable to create disk image when size is 0 or not set")
-			}
-			disk.SetPath(filepath.Clean(filepath.Join(h.StateDir, fmt.Sprintf("disk%02d.img", idx))))
-			h.Disks[idx] = disk
-		}
-		if err := disk.Ensure(); err != nil {
-			return err
-		}
+	// Run
+	h.buildArgs(cmdline)
+	err = h.execHyperKit()
+	if err != nil {
+		return err
 	}
+
 	return nil
 }
 
@@ -374,8 +364,8 @@ func (h *HyperKit) IsRunning() bool {
 
 // isDisk checks if the specified path is used as a disk image
 func (h *HyperKit) isDisk(path string) bool {
-	for _, disk := range h.Disks {
-		if filepath.Clean(path) == filepath.Clean(disk.GetPath()) {
+	for _, config := range h.Disks {
+		if filepath.Clean(path) == filepath.Clean(config.Path) {
 			return true
 		}
 	}
@@ -419,6 +409,24 @@ func (h *HyperKit) String() string {
 	return string(s)
 }
 
+// CreateDiskImage creates a empty file suitable for use as a disk image for a hyperkit VM.
+func CreateDiskImage(location string, sizeMB int) error {
+	diskDir := path.Dir(location)
+	if diskDir != "." {
+		if err := os.MkdirAll(diskDir, 0755); err != nil {
+			return err
+		}
+	}
+
+	f, err := os.Create(location)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return f.Truncate(int64(sizeMB) * int64(1024) * int64(1024))
+}
+
 func intArrayToString(i []int, sep string) string {
 	if len(i) == 0 {
 		return ""
@@ -428,44 +436,6 @@ func intArrayToString(i []int, sep string) string {
 		s[idx] = strconv.Itoa(i[idx])
 	}
 	return strings.Join(s, sep)
-}
-
-func (h *HyperKit) legacyConsoleArgs() []string {
-	cfg := "com1"
-	if h.Console == ConsoleStdio && isTerminal(os.Stdout) {
-		cfg += fmt.Sprintf(",stdio")
-	} else {
-		cfg += fmt.Sprintf(",autopty=%s/tty", h.StateDir)
-	}
-	if h.Console == ConsoleLog {
-		cfg += fmt.Sprintf(",asl")
-	} else {
-		cfg += fmt.Sprintf(",log=%s/console-ring", h.StateDir)
-	}
-	return []string{"-l", cfg}
-}
-
-func (h *HyperKit) serialArgs() []string {
-	results := []string{}
-	for i, serial := range h.Serials {
-		cfg := fmt.Sprintf("com%d", i+1)
-		switch serial.InteractiveConsole {
-		case NoInteractiveConsole:
-			cfg += ",null"
-		case StdioInteractiveConsole:
-			cfg += fmt.Sprintf(",stdio")
-		case TTYInteractiveConsole:
-			cfg += fmt.Sprintf(",autopty=%s/tty%d", h.StateDir, i+1)
-		}
-		if serial.LogToASL {
-			cfg += fmt.Sprintf(",asl")
-		}
-		if serial.LogToRingBuffer {
-			cfg += fmt.Sprintf(",log=%s/console-ring", h.StateDir)
-		}
-		results = append(results, "-l", cfg)
-	}
-	return results
 }
 
 func (h *HyperKit) buildArgs(cmdline string) {
@@ -504,13 +474,24 @@ func (h *HyperKit) buildArgs(cmdline string) {
 		a = append(a, "-U", h.UUID)
 	}
 
-	for _, disk := range h.Disks {
-		a = append(a, "-s", fmt.Sprintf("%d:0,%s", nextSlot, disk.AsArgument()))
+	for _, p := range h.Disks {
+		// Default the driver to virtio-blk
+		driver := "virtio-blk"
+		if p.Driver != "" {
+			driver = p.Driver
+		}
+		arg := fmt.Sprintf("%d:0,%s,%s", nextSlot, driver, p.Path)
+
+		// Add on a format instruction if specified.
+		if p.Format != "" {
+			arg += ",format=" + p.Format
+		}
+		a = append(a, "-s", arg)
 		nextSlot++
 	}
 
 	if h.VSock {
-		l := fmt.Sprintf("%d,virtio-sock,guest_cid=%d,path=%s", nextSlot, h.VSockGuestCID, h.VSockDir)
+		l := fmt.Sprintf("%d,virtio-sock,guest_cid=%d,path=%s", nextSlot, h.VSockGuestCID, h.StateDir)
 		if len(h.VSockPorts) > 0 {
 			l = fmt.Sprintf("%s,guest_forwards=%s", l, intArrayToString(h.VSockPorts, ";"))
 		}
@@ -531,11 +512,10 @@ func (h *HyperKit) buildArgs(cmdline string) {
 		nextSlot++
 	}
 
-	// -l: LPC device configuration.
-	if h.Serials == nil {
-		a = append(a, h.legacyConsoleArgs()...)
-	} else {
-		a = append(a, h.serialArgs()...)
+	if h.Console == ConsoleStdio && isTerminal(os.Stdout) {
+		a = append(a, "-l", "com1,stdio")
+	} else if h.StateDir != "" {
+		a = append(a, "-l", fmt.Sprintf("com1,autopty=%s/tty,log=%s/console-ring", h.StateDir, h.StateDir))
 	}
 
 	if h.Bootrom == "" {
@@ -548,50 +528,17 @@ func (h *HyperKit) buildArgs(cmdline string) {
 
 	h.Arguments = a
 	h.CmdLine = h.HyperKit + " " + strings.Join(a, " ")
-	log.Debugf("hyperkit: Arguments: %#v", h.Arguments)
-	log.Debugf("hyperkit: CmdLine: %#v", h.CmdLine)
 }
 
-// openTTY opens the tty files for reading, and returns it.
-func (h *HyperKit) openTTY(filename string) *os.File {
-	path := path.Join(h.StateDir, filename)
-	for {
-		if res, err := os.OpenFile(path, os.O_RDONLY, 0); err != nil {
-			log.Infof("hyperkit: openTTY: %v, retrying", err)
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			log.Infof("hyperkit: openTTY: got %v", path)
-			saneTerminal(res)
-			setRaw(res)
-			return res
-		}
-	}
-}
-
-func (h *HyperKit) findStdioTTY() string {
-	if h.Serials != nil {
-		for i, serial := range h.Serials {
-			if serial.InteractiveConsole == StdioInteractiveConsole {
-				return fmt.Sprintf("tty%d", i)
-			}
-		}
-		return ""
-	}
-	if h.Console == ConsoleStdio {
-		return "tty"
-	}
-	return ""
-}
-
-// execute forges the command to run hyperkit, runs and returns it.
-// It also plumbs stdin/stdout/stderr.
-func (h *HyperKit) execute() (*exec.Cmd, error) {
+// Execute hyperkit and plumb stdin/stdout/stderr.
+func (h *HyperKit) execHyperKit() error {
 
 	cmd := exec.Command(h.HyperKit, h.Arguments...)
 	if h.Argv0 != "" {
 		cmd.Args[0] = h.Argv0
 	}
 	cmd.Env = os.Environ()
+	cmd.ExtraFiles = h.ExtraFiles
 
 	// Plumb in stdin/stdout/stderr.
 	//
@@ -605,49 +552,79 @@ func (h *HyperKit) execute() (*exec.Cmd, error) {
 	//
 	// If a logger is specified, use it for stdout/stderr
 	// logging. Otherwise use the default /dev/null.
-	filename := h.findStdioTTY()
-	if filename != "" {
+	if h.Console == ConsoleStdio {
 		if isTerminal(os.Stdout) {
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 		} else {
 			go func() {
-				tty := h.openTTY(filename)
-				defer tty.Close()
+				ttyPath := fmt.Sprintf("%s/tty", h.StateDir)
+				var tty *os.File
+				for {
+					var err error
+					tty, err = os.OpenFile(ttyPath, os.O_RDONLY, 0)
+					if err == nil {
+						break
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				saneTerminal(tty)
+				setRaw(tty)
 				io.Copy(os.Stdout, tty)
+				tty.Close()
 			}()
 		}
-	}
-	if log != nil {
-		log.Debugf("hyperkit: Redirecting stdout/stderr to logger")
+	} else if h.log != nil {
+		stdoutChan := make(chan string)
+		stderrChan := make(chan string)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		go logStream(stdout, "stdout")
-		go logStream(stderr, "stderr")
+		stream(stdout, stdoutChan)
+		stream(stderr, stderrChan)
+
+		done := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case stderrl := <-stderrChan:
+					h.log.Printf("%s", stderrl)
+				case stdoutl := <-stdoutChan:
+					h.log.Printf("%s", stdoutl)
+				case <-done:
+					return
+				}
+			}
+		}()
 	}
 
-	log.Debugf("hyperkit: Starting %#v", cmd)
 	err := cmd.Start()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	h.Pid = cmd.Process.Pid
-	log.Debugf("hyperkit: Pid is %v", h.Pid)
 	h.process = cmd.Process
 	err = h.writeState()
 	if err != nil {
-		log.Debugf("hyperkit: Cannot write state: %v, killing %v", err, h.Pid)
 		h.process.Kill()
-		return nil, err
+		return err
 	}
-	return cmd, nil
+	if !h.background {
+		err = cmd.Wait()
+		if err != nil {
+			return err
+		}
+	} else {
+		// Make sure we reap the child when it exits
+		go cmd.Wait()
+	}
+	return nil
 }
 
 // writeState write the state to a JSON file
@@ -664,18 +641,18 @@ func (h *HyperKit) writeState() error {
 	return ioutil.WriteFile(filepath.Join(h.StateDir, jsonFile), []byte(s), 0644)
 }
 
-// logStream redirects a file to the logs.
-func logStream(r io.ReadCloser, name string) {
-	defer r.Close()
-	reader := bufio.NewReader(r)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			log.Warnf("hyperkit: failed to read %v: %v", name, err)
-			break
+func stream(r io.ReadCloser, dest chan<- string) {
+	go func() {
+		defer r.Close()
+		reader := bufio.NewReader(r)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			dest <- line
 		}
-		log.Infof("hyperkit: %v: %v", name, line)
-	}
+	}()
 }
 
 // checkHyperKit tries to find and/or validate the path of hyperkit
@@ -703,9 +680,6 @@ func checkHyperKit(hyperkit string) (string, error) {
 func checkVPNKitSock(vpnkitsock string) (string, error) {
 	if vpnkitsock == "auto" {
 		vpnkitsock = filepath.Join(getHome(), defaultVPNKitSock)
-		if _, err := os.Stat(vpnkitsock); err != nil {
-			vpnkitsock = filepath.Join(getHome(), legacyVPNKitSock)
-		}
 	}
 	if vpnkitsock == "" {
 		return "", nil

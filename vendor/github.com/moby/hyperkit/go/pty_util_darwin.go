@@ -7,21 +7,24 @@ which is under Apache License Version 2.0, January 2004
 */
 import (
 	"os"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
 func tcget(fd uintptr, p *unix.Termios) error {
-	termios, err := unix.IoctlGetTermios(int(fd), unix.TIOCGETA)
-	if err != nil {
-		return err
-	}
-	*p = *termios
-	return nil
+	return ioctl(fd, unix.TIOCGETA, uintptr(unsafe.Pointer(p)))
 }
 
 func tcset(fd uintptr, p *unix.Termios) error {
-	return unix.IoctlSetTermios(int(fd), unix.TIOCSETA, p)
+	return ioctl(fd, unix.TIOCSETA, uintptr(unsafe.Pointer(p)))
+}
+
+func ioctl(fd, flag, data uintptr) error {
+	if _, _, err := unix.Syscall(unix.SYS_IOCTL, fd, flag, data); err != 0 {
+		return err
+	}
+	return nil
 }
 
 func saneTerminal(f *os.File) error {
