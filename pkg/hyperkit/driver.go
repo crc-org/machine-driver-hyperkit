@@ -47,17 +47,6 @@ const (
 
 type Driver hyperkitdriver.Driver
 
-/* dummy data type used to hack hyperkit.QcowDisk behaviour */
-type QcowDisk struct {
-	hyperkit.QcowDisk
-}
-
-/* Implementing this method from the hyperkit.Disk interface disables disk
- * resizing for now as this requires the qcow-tool binary */
-func (qcow *QcowDisk) Ensure() error {
-	return nil
-}
-
 // NewDriver creates a new driver for a host
 func NewDriver() *Driver {
 	return &Driver{
@@ -214,11 +203,9 @@ func (d *Driver) Start() error {
 		return fmt.Errorf("Unsupported VM image format: %s", d.ImageFormat)
 	}
 	h.Disks = []hyperkit.Disk{
-		&QcowDisk{
-			hyperkit.QcowDisk{
-				Path: d.getDiskPath(),
-				Trim: true,
-			},
+		&hyperkit.QcowDisk{
+			Path: d.getDiskPath(),
+			Trim: true,
 		},
 	}
 	log.Debugf("Starting with cmdline: %s", d.Cmdline)
