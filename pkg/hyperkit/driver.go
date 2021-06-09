@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -91,6 +93,10 @@ func (d *Driver) Create() error {
 	}
 
 	if err := copyFile(d.ImageSourcePath, d.getDiskPath()); err != nil {
+		return err
+	}
+
+	if _, err := d.resizeDiskImageIfNeeded(d.DiskCapacity); err != nil {
 		return err
 	}
 
@@ -405,6 +411,77 @@ func (d *Driver) findHyperkitProcess() (ps.Process, error) {
 	return p, nil
 }
 
+func (d *Driver) runQcowTool(args ...string) (string, error) {
+	log.Debugf("Running %s %s", d.QcowToolPath, strings.Join(args, " "))
+	out, err := exec.Command(d.QcowToolPath, args...).Output() // #nosec G204
+	if err != nil {
+		log.Debugf("qcow-tool error: %v", err)
+
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			log.Debugf("stderr: %s", exitErr.Stderr)
+		}
+		return "", err
+	}
+
+	return string(out), nil
+}
+
+func (d *Driver) resizeDiskImage(newCapacity uint64) error {
+	log.Debugf("resizeDiskImage(%d)", newCapacity)
+
+	_, err := d.runQcowTool("resize", fmt.Sprintf("--size=%d", newCapacity), d.getDiskPath())
+	if err != nil {
+		return err
+	}
+
+	d.DiskCapacity = newCapacity
+	return nil
+}
+
+func (d *Driver) checkIfResizeNeeded(newCapacity uint64) (bool, error) {
+	if newCapacity == 0 {
+		return false, nil
+	}
+
+	out, err := d.runQcowTool("info", d.getDiskPath())
+	if err != nil {
+		return false, err
+	}
+
+	sizeRegexp := regexp.MustCompile(`\(size ([[:digit:]]+)\)`)
+	submatches := sizeRegexp.FindStringSubmatch(out)
+	if len(submatches) != 2 {
+		return false, fmt.Errorf("Could not parse current image size")
+	}
+	currentCapacity, err := strconv.ParseUint(submatches[1], 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("Could not parse current image size: %w", err)
+	}
+	if currentCapacity == newCapacity {
+		log.Debugf("disk image capacity is already %d bytes", currentCapacity)
+		return false, nil
+	}
+	if currentCapacity > newCapacity {
+		return false, fmt.Errorf("current disk image capacity is bigger than the requested size (%d > %d)", currentCapacity, newCapacity)
+	}
+
+	return true, nil
+}
+
+func (d *Driver) resizeDiskImageIfNeeded(newCapacity uint64) (bool, error) {
+	resizeNeeded, err := d.checkIfResizeNeeded(newCapacity)
+	if err != nil || !resizeNeeded {
+		return false, err
+	}
+	err = d.resizeDiskImage(newCapacity)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (d *Driver) UpdateConfigRaw(rawConfig []byte) error {
 	var newDriver Driver
 	err := json.Unmarshal(rawConfig, &newDriver)
@@ -412,12 +489,12 @@ func (d *Driver) UpdateConfigRaw(rawConfig []byte) error {
 		return err
 	}
 
-	if newDriver.Memory == d.Memory && newDriver.CPU == d.CPU {
-		/* For now only changing memory and CPU is supported/tested.
-		 * If none of these changed, we might be trying to change another
-		 * value, which is may or may not work, return ErrNotImplemented for now
-		 */
-		return drivers.ErrNotImplemented
+	if newDriver.DiskCapacity != d.DiskCapacity {
+		_, err = d.resizeDiskImageIfNeeded(newDriver.DiskCapacity)
+		if err != nil {
+			log.Debugf("failed to resize disk image: %v", err)
+			return err
+		}
 	}
 	*d = newDriver
 

@@ -1,4 +1,4 @@
-# github.com/code-ready/machine v0.0.0-20210211073310-3b9fff90883f
+# github.com/code-ready/machine v0.0.0-20210616065635-eff475d32b9a
 github.com/code-ready/machine/drivers/hyperkit
 github.com/code-ready/machine/libmachine/drivers
 github.com/code-ready/machine/libmachine/drivers/plugin
