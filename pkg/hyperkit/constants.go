@@ -2,7 +2,7 @@ package hyperkit
 
 const (
 	DriverName    = "hyperkit"
-	DriverVersion = "0.13.0"
+	DriverVersion = "0.14.0"
 
 	DefaultMemory  = 8192
 	DefaultCPUs    = 4
