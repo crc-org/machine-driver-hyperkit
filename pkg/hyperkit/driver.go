@@ -184,6 +184,7 @@ func (d *Driver) Start() error {
 	h.UUID = d.UUID
 	h.VSock = true
 	h.VSockGuestCID = 3
+	h.VPNKitUUID = d.VpnKitUUID
 
 	if vsockPorts, err := d.extractVSockPorts(); err != nil {
 		return err
