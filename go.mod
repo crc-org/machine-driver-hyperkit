@@ -1,6 +1,6 @@
 module github.com/code-ready/machine-driver-hyperkit
 
-go 1.13
+go 1.15
 
 require (
 	github.com/code-ready/machine v0.0.0-20210616065635-eff475d32b9a
