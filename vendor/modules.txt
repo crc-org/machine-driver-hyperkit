@@ -1,4 +1,5 @@
 # github.com/code-ready/machine v0.0.0-20210616065635-eff475d32b9a
+## explicit
 github.com/code-ready/machine/drivers/hyperkit
 github.com/code-ready/machine/libmachine/drivers
 github.com/code-ready/machine/libmachine/drivers/plugin
@@ -7,16 +8,22 @@ github.com/code-ready/machine/libmachine/drivers/rpc
 github.com/code-ready/machine/libmachine/state
 github.com/code-ready/machine/libmachine/version
 # github.com/mitchellh/go-ps v1.0.0
+## explicit
 github.com/mitchellh/go-ps
 # github.com/moby/hyperkit v0.0.0-20171204115932-858492e3d919
+## explicit
 github.com/moby/hyperkit/go
 # github.com/pkg/errors v0.9.1
+## explicit
 github.com/pkg/errors
 # github.com/sirupsen/logrus v1.8.1
+## explicit
 github.com/sirupsen/logrus
 # github.com/zchee/go-vmnet v0.0.0-20161021174912-97ebf9174097
+## explicit
 github.com/zchee/go-vmnet
 # golang.org/x/sys v0.0.0-20210608053332-aa57babbf139
+## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows

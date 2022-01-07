@@ -4,7 +4,7 @@ GOPATH ?= $(shell go env GOPATH)
 
 ORG := github.com/machine-drivers
 REPOPATH ?= $(ORG)/docker-machine-driver-hyperkit
-GOLANGCI_LINT_VERSION=v1.39.0
+GOLANGCI_LINT_VERSION=v1.43.0
 
 default: build
 
