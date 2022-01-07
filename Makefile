@@ -19,7 +19,6 @@ $(BUILD_DIR):
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -rf vendor
 
 .PHONY: build
 build: $(BUILD_DIR) vendor lint test
